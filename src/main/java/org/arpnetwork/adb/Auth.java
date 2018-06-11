@@ -16,12 +16,15 @@
 package org.arpnetwork.adb;
 
 import android.util.Base64;
+import android.util.Log;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
@@ -37,44 +40,45 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
 public class Auth {
-    private static final String PRIVATE_KEY = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIB\n" +
-            "AQDZOSzTrqXBzg4IYzTXQFP9+NS/BMI1UXpiR1QJFbLggy1QuDMm7EmsZ10m3ABhR/vwSj8/EbzIvtJZD7\n" +
-            "f3T2bvbSGSefXA1Vw50zhJtMrvHD3DnDzjrDiBT1t+K0bfcMhUPiZxgzESLfPpo7ST9FxOtltLfdLw6Ucp\n" +
-            "d11X9stbExZgGS+HRlBKii0eWHWOhEU9Psn38TrN9uOt4wuFQH/puvRbLd0Df3uf6n9rOji0bi7I7P0MfQ\n" +
-            "Exu3QDZPtDfLWoxXEbMGxpMfQJ5K/a+4JTwBYLy6K1s9ZQQ00R0TWimA0gQD0KAkpHNMDMu8af0hmCg6hA\n" +
-            "o43YLByWUx8FIgwvAgMBAAECggEACOZ0CkxTfovo54ES3UrwO2Z+9XmNcGp9qf1q2Xzi5Ci4OH0DnGqMCq\n" +
-            "tTwIigpngw6oq+d/1oZON6AHMQwj+l1X/9FO7Gi76rHJdsl4swtPh3z9ROo7Qe2zybRBNcwCTzZ3EerskT\n" +
-            "2/gM7PD52wWeAGMt7xfL6nZfF4Bo3XaUpOR2wYIPaTCvmpcXHogvoYiTARyotJ4jqyFN7B2abGpnSOsnso\n" +
-            "9Ub/w+BXLuT9DOWv0OmKvzOZhc0/O146zZqRDzLcBYpO+opIvz14hp4YHtRVdf/6dnXyl2ROyMdTaz1FrQ\n" +
-            "vvdPXEY/i3KCl/h5/xnkYMW8GGadKJ8rY3+d9EXgqQKBgQD1iyBMTzWDkoFUuTjUB4B5tf3zU/lruBlENM\n" +
-            "HcMDiSD5g0XKwnFPsHHAkA8NWifcfOfx84Muw4NheRm0uhMymAR+raYZ0y0AB6Yi/uwPd6I9aqh0+WnUD1\n" +
-            "TdKNsbNCbY+NVAnEtdkAy3sAcpRwyofj3bk25+Djd172J6pYGkTGXQKBgQDieU7FvHJ5zXuQHOdINpAcbM\n" +
-            "VtPEGtmLkdV0xwABeKNz+Omu4mqefTuOnqxdtDuXnZ47hm9yjDqBA5HZeAzLHCUy5np5dVNIu40Sc0GzW7\n" +
-            "7JBSbj5MZ4UUM0UnJUIBHDoAR4JsFJ6hwyNZQg7+7SqbgXv7lR1yYeoD0y+Xwerb+wKBgDN3sxBrtfLbPa\n" +
-            "KtpFzFKcfZPt7HJkvO7fTe/heSP/lVrXikSC109105IiYBVTZXGQ+Ok9Oq0NrDc9NAcuzaFYPfDzoxJcsl\n" +
-            "0EPW2uc3qWf/pRpffG48jgYdBtpOeh2da26bQ+TonRDOlfy1B6pQuYUoz47Tsc7cEZqVG96Vuv69AoGBAK\n" +
-            "t8wboW9PPoNW0tha/3qO3tKx2I6A6kO1/NT9LrLuf458Z66GQcea+nMHEWuu4wTuU/es10z8g/xXEKSEM+\n" +
-            "PEfyJoxUqdHaBQbAURgylmCjQ7E3SzMdm/Zs0CtRGgavMfguLcLbZjcFBQo8bBB6062GwbQB+Jc5LzMQQd\n" +
-            "R/APDrAoGAMRhAPypxoNG7uluKAq9Jo2FZz8OU7ZvuDLqTumNF1RFTIg9wwJfYbFQYAzBp0gn7djLaVPMi\n" +
-            "F+XRPM3CgIjb31QyDiSf2gC4frwv2oKtlomV9DFE78DkDvfYCfcTRqDMDv8aR5zxUioiqbgSuBu1boGKvP\n" +
-            "johjWGKb5WRJIe2pA=";
-
     // DER encoding T of SHA-1 DigestInfo value. See RFC3447#section-9.2
     private static final byte[] ID_SHA_1 = new byte[]{48, 33, 48, 9, 6, 5, 43, 14, 3, 2, 26, 5, 0, 4, 20};
 
     private static final int ANDROID_PUBKEY_MODULUS_SIZE = 2048 / 8;
     private static final int ANDROID_PUBKEY_ENCODED_SIZE = ANDROID_PUBKEY_MODULUS_SIZE * 2 + 12;
 
-    private static RSAPrivateKey sPrivateKey;
-    private static RSAPublicKey sPublicKey;
+    private RSAPrivateKey mPrivateKey;
+    private byte[] mPublicKey;
+
+    public Auth() {
+        try {
+            KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
+            KeyPair keyPair = kpg.generateKeyPair();
+            mPrivateKey = (RSAPrivateKey) keyPair.getPrivate();
+            mPublicKey = encodePublicKey((RSAPublicKey) keyPair.getPublic());
+        } catch (NoSuchAlgorithmException e) {
+        }
+    }
+
+    public Auth(String key) throws InvalidKeySpecException {
+        byte[] encodedKey = Base64.decode(key, Base64.DEFAULT);
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(encodedKey);
+
+        try {
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            mPrivateKey = (RSAPrivateKey) kf.generatePrivate(keySpec);
+            RSAPublicKeySpec spec = new RSAPublicKeySpec(mPrivateKey.getModulus(), RSAKeyGenParameterSpec.F4);
+            mPublicKey = encodePublicKey((RSAPublicKey) kf.generatePublic(spec));
+        } catch (NoSuchAlgorithmException e) {
+        }
+    }
 
     // Signs `token` with the private key.
-    public static byte[] sign(byte[] token) {
+    public byte[] sign(byte[] token) {
         byte[] signature = null;
 
         try {
             Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
-            cipher.init(Cipher.ENCRYPT_MODE, sPrivateKey);
+            cipher.init(Cipher.ENCRYPT_MODE, mPrivateKey);
             signature = cipher.doFinal(encodeSHA1(token));
         } catch (NoSuchAlgorithmException var5) {
         } catch (InvalidKeyException e) {
@@ -86,16 +90,21 @@ public class Auth {
         return signature;
     }
 
+    // Returns the private key.
+    public String getPrivateKey() {
+        return Base64.encodeToString(mPrivateKey.getEncoded(), Base64.NO_WRAP);
+    }
+
     // Returns the public key.
-    public static String publicKey() {
-        return Base64.encodeToString(encodedPublicKey(), Base64.NO_WRAP) + " ARP";
+    public String getPublicKey() {
+        return Base64.encodeToString(mPublicKey, Base64.NO_WRAP);
     }
 
     // Returns the public key digest.
-    public static String publicKeyDigest() {
+    public String getPublicKeyDigest() {
         try {
             MessageDigest md5 = MessageDigest.getInstance("MD5");
-            byte[] digest = md5.digest(encodedPublicKey());
+            byte[] digest = md5.digest(mPublicKey);
             return toHexString(digest);
         } catch (NoSuchAlgorithmException e) {
         }
@@ -103,23 +112,8 @@ public class Auth {
         return null;
     }
 
-    private static String toHexString(byte[] data) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : data) {
-            if (sb.length() > 0) {
-                sb.append(":");
-            }
-            sb.append(String.format("%02X", b & 0xFF));
-        }
-        return sb.toString();
-    }
-
-    private static byte[] encodedPublicKey() {
-        return encodePublicKey(sPublicKey);
-    }
-
     // Encodes `key` in the Android RSA public key binary format.
-    private static byte[] encodePublicKey(RSAPublicKey key) {
+    private byte[] encodePublicKey(RSAPublicKey key) {
         ByteBuffer bb = ByteBuffer.allocate(ANDROID_PUBKEY_ENCODED_SIZE);
         bb.order(ByteOrder.LITTLE_ENDIAN);
 
@@ -152,14 +146,14 @@ public class Auth {
     }
 
     // EMSA-PKCS1-v1_5-ENCODE
-    private static byte[] encodeSHA1(byte[] digest) {
+    private byte[] encodeSHA1(byte[] digest) {
         return ByteBuffer.allocate(ID_SHA_1.length + digest.length)
                 .put(ID_SHA_1)
                 .put(digest)
                 .array();
     }
 
-    private static void put(ByteBuffer bb, BigInteger value) {
+    private void put(ByteBuffer bb, BigInteger value) {
         int length = ANDROID_PUBKEY_MODULUS_SIZE;
         byte[] bytes = value.toByteArray();
         for (int i = 0, j = bytes.length - 1; i < length; ++i, --j) {
@@ -167,17 +161,14 @@ public class Auth {
         }
     }
 
-    static {
-        byte[] key = Base64.decode(PRIVATE_KEY, Base64.DEFAULT);
-        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(key);
-
-        try {
-            KeyFactory kf = KeyFactory.getInstance("RSA");
-            sPrivateKey = (RSAPrivateKey) kf.generatePrivate(keySpec);
-            RSAPublicKeySpec spec = new RSAPublicKeySpec(sPrivateKey.getModulus(), RSAKeyGenParameterSpec.F4);
-            sPublicKey = (RSAPublicKey) kf.generatePublic(spec);
-        } catch (InvalidKeySpecException e) {
-        } catch (NoSuchAlgorithmException e) {
+    private String toHexString(byte[] data) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) {
+            if (sb.length() > 0) {
+                sb.append(":");
+            }
+            sb.append(String.format("%02X", b & 0xFF));
         }
+        return sb.toString();
     }
 }

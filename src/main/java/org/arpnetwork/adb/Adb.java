@@ -34,15 +34,15 @@ public class Adb {
     /**
      * Connects to a device via TCP/IP.
      */
-    public Adb(String host) throws IOException {
-        this(host, DEFAULT_PORT);
+    public Adb(Auth auth, String host) throws IOException {
+        this(auth, host, DEFAULT_PORT);
     }
 
     /**
      * Connects to a device via TCP/IP.
      */
-    public Adb(String host, int port) throws IOException {
-        mConn = new Connection(host, port);
+    public Adb(Auth auth, String host, int port) throws IOException {
+        mConn = new Connection(auth, host, port);
     }
 
     /**

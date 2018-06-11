@@ -38,13 +38,15 @@ public class Connection {
     private static final int AUTH_RSAPUBLICKEY = 3;
 
     private Socket mSocket;
+    private Auth mAuth;
     private InputStream mInputStream;
     private OutputStream mOutputStream;
 
     private int mSeq;
 
-    public Connection(String host, int port) throws IOException {
+    public Connection(Auth auth, String host, int port) throws IOException {
         mSocket = new Socket(host, port);
+        mAuth = auth;
         mInputStream = mSocket.getInputStream();
         mOutputStream = mSocket.getOutputStream();
         mSeq = 1;
@@ -94,11 +96,11 @@ public class Connection {
         byte[] data = null;
         switch (mode) {
             case AUTH_SIGNATURE:
-                data = Auth.sign(token);
+                data = mAuth.sign(token);
                 break;
 
             case AUTH_RSAPUBLICKEY:
-                data = (Auth.publicKey() + "\0").getBytes();
+                data = (mAuth.getPublicKey() + " ARP\0").getBytes();
                 break;
 
             default:
