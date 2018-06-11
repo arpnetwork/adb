@@ -98,7 +98,7 @@ public class Connection {
                 break;
 
             case AUTH_RSAPUBLICKEY:
-                data = Auth.publicKey();
+                data = (Auth.publicKey() + "\0").getBytes();
                 break;
 
             default:

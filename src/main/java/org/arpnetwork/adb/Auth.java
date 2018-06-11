@@ -22,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -86,13 +87,39 @@ public class Auth {
     }
 
     // Returns the public key.
-    public static byte[] publicKey() {
-        String key = encodePublicKey(sPublicKey) + " ARP\0";
-        return key.getBytes();
+    public static String publicKey() {
+        return Base64.encodeToString(encodedPublicKey(), Base64.NO_WRAP) + " ARP";
+    }
+
+    // Returns the public key digest.
+    public static String publicKeyDigest() {
+        try {
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            byte[] digest = md5.digest(encodedPublicKey());
+            return toHexString(digest);
+        } catch (NoSuchAlgorithmException e) {
+        }
+
+        return null;
+    }
+
+    private static String toHexString(byte[] data) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : data) {
+            if (sb.length() > 0) {
+                sb.append(":");
+            }
+            sb.append(String.format("%02X", b & 0xFF));
+        }
+        return sb.toString();
+    }
+
+    private static byte[] encodedPublicKey() {
+        return encodePublicKey(sPublicKey);
     }
 
     // Encodes `key` in the Android RSA public key binary format.
-    private static String encodePublicKey(RSAPublicKey key) {
+    private static byte[] encodePublicKey(RSAPublicKey key) {
         ByteBuffer bb = ByteBuffer.allocate(ANDROID_PUBKEY_ENCODED_SIZE);
         bb.order(ByteOrder.LITTLE_ENDIAN);
 
@@ -121,7 +148,7 @@ public class Auth {
         // Store the exponent.
         bb.putInt(e.intValue());
 
-        return Base64.encodeToString(bb.array(), Base64.NO_WRAP);
+        return bb.array();
     }
 
     // EMSA-PKCS1-v1_5-ENCODE
