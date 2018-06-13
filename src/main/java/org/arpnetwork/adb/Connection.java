@@ -15,14 +15,15 @@
  */
 package org.arpnetwork.adb;
 
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.net.ProtocolException;
-import java.net.Socket;
+import android.util.Log;
 
-public class Connection {
+import java.io.IOException;
+import java.net.ProtocolException;
+import java.util.concurrent.ConcurrentHashMap;
+
+import io.netty.buffer.ByteBuf;
+
+public class Connection implements NettyConnection.ConnectionListener {
     private static final int CNCX = 0x4e584e43;
     private static final int AUTH = 0x48545541;
     private static final int OPEN = 0x4e45504f;
@@ -37,103 +38,228 @@ public class Connection {
     private static final int AUTH_SIGNATURE = 2;
     private static final int AUTH_RSAPUBLICKEY = 3;
 
-    private Socket mSocket;
+    private NettyConnection mConn;
     private Auth mAuth;
-    private InputStream mInputStream;
-    private OutputStream mOutputStream;
+    private State mState;
+
+    private ConcurrentHashMap<Integer, Channel> mChannels;
 
     private int mSeq;
 
-    public Connection(Auth auth, String host, int port) throws IOException {
-        mSocket = new Socket(host, port);
+    private ConnectionListener mListener;
+
+    public interface ConnectionListener {
+        void onConnected(Connection conn);
+
+        void onClosed(Connection conn);
+
+        void onAuth(Connection conn, String key);
+
+        void onException(Connection conn, Throwable cause);
+    }
+
+    private enum State {
+        IDLE,
+        CONNECTING,
+        AUTH_SIGNATURE,
+        AUTH_RSAPUBLICKEY,
+        CONNECTED,
+    }
+
+    public Connection(Auth auth, String host, int port) {
+        mConn = new NettyConnection(this, host, port);
         mAuth = auth;
-        mInputStream = mSocket.getInputStream();
-        mOutputStream = mSocket.getOutputStream();
         mSeq = 1;
+        mState = State.IDLE;
+        mChannels = new ConcurrentHashMap<>();
+    }
 
-        Message msg = send(new Message(CNCX, VERSION, MAXDATA));
-        if (!(msg.command() == AUTH && msg.arg0() == AUTH_TOKEN && tryAuth(AUTH_SIGNATURE, msg.data()))) {
-            throw new ProtocolException();
+    public void setListener(ConnectionListener listener) {
+        mListener = listener;
+    }
+
+    public void connect() {
+        assertState(State.IDLE);
+
+        mState = State.CONNECTING;
+        mConn.connect();
+    }
+
+    public void close() {
+        mConn.close();
+        reset();
+    }
+
+    public ShellChannel openShell(String cmd) {
+        int id = open("shell,v2,raw:" + cmd);
+
+        ShellChannel ss = new ShellChannel(this, id);
+        mChannels.put(id, ss);
+        return ss;
+    }
+
+    public SyncChannel openSync() {
+        int id = open("sync:");
+
+        SyncChannel ss = new SyncChannel(this, id);
+        mChannels.put(id, ss);
+        return ss;
+    }
+
+    public void write(int id, int remoteId, ByteBuf buf) {
+        write(id, remoteId, buf.array());
+    }
+
+    public void write(int id, int remoteId, byte[] data) {
+        if (mState != State.CONNECTED) {
+            throw new IllegalStateException();
+        }
+
+        mConn.write(new Message(WRTE, id, remoteId, data));
+    }
+
+    public void close(int id, int remoteId) {
+        mConn.write(new Message(CLSE, id, remoteId));
+    }
+
+    @Override
+    public void onConnected(NettyConnection conn) {
+        conn.write(new Message(CNCX, VERSION, MAXDATA));
+    }
+
+    @Override
+    public void onClosed(NettyConnection conn) {
+        reset();
+
+        if (mListener != null) {
+            mListener.onClosed(this);
         }
     }
 
-    public Stream open(String destination) throws IOException {
-        Stream stream = null;
-
-        Message msg = send(new Message(OPEN, mSeq++, 0, (destination + "\0").getBytes()));
-        if (msg.command() == OKAY) {
-            stream = new Stream(this, msg.arg1(), msg.arg0());
-        }
-
-        return stream;
-    }
-
-    public void write(int id, int remoteId, byte[] data) throws IOException {
-        sendRequest(new Message(WRTE, id, remoteId, data));
-    }
-
-    public byte[] read(int id, int remoteId) throws IOException {
-        Message msg = Message.readFrom(mInputStream);
-        switch (msg.command()) {
-            case CLSE:
-                throw new EOFException();
-
-            case WRTE:
-                // FIXME: multi stream support
-                if (id != msg.arg1() || remoteId != msg.arg0()) {
-                    throw new ProtocolException();
-                }
-
-                sendReady(id, remoteId);
-                return msg.data();
-
-            default:
-                throw new ProtocolException();
-        }
-    }
-
-    private boolean tryAuth(int mode, byte[] token) throws IOException {
-        byte[] data = null;
-        switch (mode) {
-            case AUTH_SIGNATURE:
-                data = mAuth.sign(token);
-                break;
-
-            case AUTH_RSAPUBLICKEY:
-                data = (mAuth.getPublicKey() + " ARP\0").getBytes();
-                break;
-
-            default:
-                assert false;
-        }
-
-        Message msg = send(new Message(AUTH, mode, 0, data));
+    @Override
+    public void onMessage(NettyConnection conn, Message msg) throws Exception {
+        Log.i("TEST", "message reached. cmd = " + msg);
         switch (msg.command()) {
             case AUTH:
-                return mode == AUTH_SIGNATURE ? tryAuth(AUTH_RSAPUBLICKEY, msg.data()) : false;
+                assertProtocol(msg.arg0() == AUTH_TOKEN);
+                onAuth(msg.data());
+                break;
 
             case CNCX:
-                return true;
+                onConnected();
+                break;
+
+            case OKAY:
+                onChannelOkay(msg.arg1(), msg.arg0());
+                break;
+
+            case WRTE:
+                onChannelData(msg.arg1(), msg.arg0(), msg.data());
+                break;
+
+            case CLSE:
+                onChannelClosed(msg.arg1(), msg.arg0());
+                break;
+        }
+    }
+
+    @Override
+    public void onException(NettyConnection conn, Throwable cause) {
+        cause.printStackTrace();
+
+        reset();
+
+        if (mListener != null) {
+            mListener.onException(this, cause);
+        }
+    }
+
+
+    private void onAuth(byte[] token) throws IOException {
+        switch (mState) {
+            case CONNECTING:
+                mState = State.AUTH_SIGNATURE;
+                mConn.write(new Message(AUTH, AUTH_SIGNATURE, 0, mAuth.sign(token)));
+                break;
+
+            case AUTH_SIGNATURE:
+                mState = State.AUTH_RSAPUBLICKEY;
+                byte[] key = (mAuth.getPublicKey() + " ARP\0").getBytes();
+                mConn.write(new Message(AUTH, AUTH_RSAPUBLICKEY, 0, key));
+                if (mListener != null) {
+                    mListener.onAuth(this, mAuth.getPublicKeyDigest());
+                }
+                break;
 
             default:
-                return false;
+                assertProtocol(false);
         }
     }
 
-    private void sendRequest(Message msg) throws IOException {
-        msg = send(msg);
-        if (msg.command() != OKAY) {
-            throw new ProtocolException();
+    private void onConnected() {
+        mState = State.CONNECTED;
+
+        if (mListener != null) {
+            mListener.onConnected(this);
         }
     }
 
-    private void sendReady(int id, int remoteId) throws IOException {
-        Message msg = new Message(OKAY, id, remoteId);
-        msg.writeTo(mOutputStream);
+    private void onChannelOkay(int id, int remoteId) throws IOException {
+        Channel s = mChannels.get(id);
+        assertProtocol(s != null);
+        if (s.remoteId() == -1) {
+            s.onOpened(remoteId);
+        }
     }
 
-    private Message send(Message msg) throws IOException {
-        msg.writeTo(mOutputStream);
-        return Message.readFrom(mInputStream);
+    private void onChannelClosed(int id, int remoteId) throws IOException {
+        Channel s = mChannels.get(id);
+        if (s != null) {
+            assertProtocol(s.remoteId() == remoteId);
+            mChannels.remove(id);
+            s.onClosed();
+        }
+    }
+
+    private void onChannelData(int id, int remoteId, byte[] data) throws IOException {
+        Channel s = mChannels.get(id);
+        assertProtocol(s != null && s.remoteId() == remoteId);
+        sendReady(id, remoteId);
+        s.onData(data);
+    }
+
+    private int open(String destination) {
+        assertState(State.CONNECTED);
+
+        int id = mSeq++;
+        mConn.write(new Message(OPEN, id, 0, (destination + "\0").getBytes()));
+        return id;
+    }
+
+    private void reset() {
+        mState = State.IDLE;
+
+        for (Channel ch : mChannels.values()) {
+            if (ch.isOpened()) {
+                ch.onClosed();
+            }
+        }
+        mChannels.clear();
+    }
+
+    private void sendReady(int id, int remoteId) {
+        mConn.write(new Message(OKAY, id, remoteId));
+    }
+
+    private void assertProtocol(boolean expression) throws ProtocolException {
+        if (!expression) {
+            throw new ProtocolException("Invalid ADB Protocol");
+        }
+    }
+
+    private void assertState(State state) {
+        if (mState != state) {
+            throw new IllegalStateException();
+        }
     }
 }

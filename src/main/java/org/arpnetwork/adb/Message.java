@@ -15,16 +15,12 @@
  */
 package org.arpnetwork.adb;
 
-import java.io.DataInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.ProtocolException;
-import java.nio.ByteBuffer;
+
+import io.netty.buffer.ByteBuf;
 
 public class Message {
-    private static final int HEADER_SIZE = 24;
-
     private int mCommand;
     private int mArg0;
     private int mArg1;
@@ -41,24 +37,19 @@ public class Message {
         mData = data;
     }
 
-    public static Message readFrom(InputStream is) throws IOException {
-        DataInputStream dis = new DataInputStream(is);
-
+    public static Message readFrom(ByteBuf buf) throws IOException {
         // Header
-        ByteBuffer bb = AdbByteBuffer.allocate(HEADER_SIZE);
-        dis.readFully(bb.array());
-        int command = bb.getInt();
-        int arg0 = bb.getInt();
-        int arg1 = bb.getInt();
-        int length = bb.getInt();
-        int crc32 = bb.getInt();
-        int magic = bb.getInt();
+        int command = buf.readIntLE();
+        int arg0 = buf.readIntLE();
+        int arg1 = buf.readIntLE();
+        int length = buf.readIntLE();
+        int crc32 = buf.readIntLE();
+        int magic = buf.readIntLE();
 
         // Body
-        byte[] data = new byte[length];
-        dis.readFully(data);
+        ByteBuf body = buf.readBytes(length);
 
-        Message msg = new Message(command, arg0, arg1, data);
+        Message msg = new Message(command, arg0, arg1, body.array());
         if (msg.checksum() != crc32 || msg.magic() != magic) {
             throw new ProtocolException();
         }
@@ -66,16 +57,14 @@ public class Message {
         return msg;
     }
 
-    public void writeTo(OutputStream os) throws IOException {
-        ByteBuffer bb = AdbByteBuffer.allocate(HEADER_SIZE + mData.length);
-        bb.putInt(mCommand);
-        bb.putInt(mArg0);
-        bb.putInt(mArg1);
-        bb.putInt(mData.length);
-        bb.putInt(checksum());
-        bb.putInt(magic());
-        bb.put(mData);
-        os.write(bb.array());
+    public void writeTo(ByteBuf buf) {
+        buf.writeIntLE(mCommand);
+        buf.writeIntLE(mArg0);
+        buf.writeIntLE(mArg1);
+        buf.writeIntLE(mData.length);
+        buf.writeIntLE(checksum());
+        buf.writeIntLE(magic());
+        buf.writeBytes(mData);
     }
 
     public int command() {
@@ -92,6 +81,11 @@ public class Message {
 
     public byte[] data() {
         return this.mData;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("[%s, arg0=%d arg1=%d size=%d]", Util.commandToString(mCommand), mArg0, mArg1, mData.length);
     }
 
     private int checksum() {

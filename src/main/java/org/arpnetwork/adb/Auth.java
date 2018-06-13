@@ -16,7 +16,6 @@
 package org.arpnetwork.adb;
 
 import android.util.Base64;
-import android.util.Log;
 
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
