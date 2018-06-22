@@ -15,8 +15,6 @@
  */
 package org.arpnetwork.adb;
 
-import android.util.Log;
-
 import java.io.IOException;
 import java.net.ProtocolException;
 
@@ -42,12 +40,8 @@ public class ShellChannel extends Channel {
         mListener = listener;
     }
 
-    public void writeLine(String line) {
-        if (!line.endsWith("\n")) {
-            line = line + "\n";
-        }
-
-        ShellMessage msg = new ShellMessage(ShellMessage.STDIN, line);
+    public void write(String data) {
+        ShellMessage msg = new ShellMessage(ShellMessage.STDIN, data);
         write(msg.encodeToBytes());
     }
 
@@ -58,9 +52,8 @@ public class ShellChannel extends Channel {
 
     @Override
     protected void onRead(Object msg) throws IOException {
-        ShellMessage m = (ShellMessage) msg;
-        Log.i("TEST", msg.toString());
         if (mListener != null) {
+            ShellMessage m = (ShellMessage) msg;
             switch (m.id()) {
                 case ShellMessage.STDOUT:
                     mListener.onStdout(this, m.data());
