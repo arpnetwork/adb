@@ -42,7 +42,7 @@ public class NettyConnection {
 
     private EventLoopGroup mWorkerGroup;
     private ChannelFuture mChannelFuture;
-    private GenericFutureListener<ChannelFuture> mChannelFutrueListener;
+    private GenericFutureListener<ChannelFuture> mChannelFutureListener;
 
     public interface ConnectionListener {
         void onConnected(NettyConnection conn);
@@ -80,7 +80,7 @@ public class NettyConnection {
         });
 
         mChannelFuture = b.connect(mHost, mPort);
-        mChannelFutrueListener = new GenericFutureListener<ChannelFuture>() {
+        mChannelFutureListener = new GenericFutureListener<ChannelFuture>() {
             @Override
             public void operationComplete(ChannelFuture future) {
                 if (future.cause() != null) {
@@ -88,11 +88,11 @@ public class NettyConnection {
                 }
             }
         };
-        mChannelFuture.addListener(mChannelFutrueListener);
+        mChannelFuture.addListener(mChannelFutureListener);
     }
 
     public void close() {
-        mChannelFuture.removeListener(mChannelFutrueListener);
+        mChannelFuture.removeListener(mChannelFutureListener);
         try {
             mChannelFuture.sync().channel().close().sync();
         } catch (InterruptedException e) {
