@@ -55,6 +55,10 @@ public class SyncChannel extends Channel {
         write(new SyncMessage(data));
     }
 
+    public void writeData(byte[] data, int offset, int length) {
+        write(new SyncMessage(data, offset, length));
+    }
+
     public void writeDone(int timestamp) {
         write(new SyncMessage(timestamp));
     }

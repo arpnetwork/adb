@@ -20,25 +20,35 @@ public class SyncMessage {
     private int mId;
     private int mTimestamp;
     private byte[] mData;
+    private int mOffset;
+    private int mLength;
 
     public SyncMessage(int id, String data) {
         this(id, data.getBytes());
     }
 
     public SyncMessage(int id, byte[] data) {
+        this(id, data, 0, data.length);
+    }
+
+    public SyncMessage(int id, byte[] data, int offset, int length) {
         mId = id;
         mData = data;
+        mOffset = offset;
+        mLength = length;
     }
 
     public SyncMessage(byte[] data) {
-        mId = DATA;
-        mData = data;
+        this(DATA, data);
+    }
+
+    public SyncMessage(byte[] data, int offset, int length) {
+        this(DATA, data, offset, length);
     }
 
     public SyncMessage(int timestamp) {
-        mId = DONE;
+        this(DONE, new byte[0]);
         mTimestamp = timestamp;
-        mData = new byte[0];
     }
 
     public static SyncMessage decodeFrom(ByteBuf buf) {
@@ -66,10 +76,12 @@ public class SyncMessage {
     }
 
     public byte[] encodeToBytes() {
-        ByteBuf buf = Unpooled.buffer(8 + mData.length);
+        ByteBuf buf = Unpooled.buffer(8 + mLength);
         buf.writeIntLE(mId);
-        buf.writeIntLE(mId == DONE ? mTimestamp : mData.length);
-        buf.writeBytes(mData);
+        buf.writeIntLE(mId == DONE ? mTimestamp : mLength);
+        if (mLength > 0) {
+            buf.writeBytes(mData, mOffset, mLength);
+        }
         return buf.array();
     }
 
