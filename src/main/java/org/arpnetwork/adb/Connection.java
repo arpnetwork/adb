@@ -33,6 +33,7 @@ public class Connection implements NettyConnection.ConnectionListener {
 
     private static final int VERSION = 0x01000000;
     private static final int MAXDATA = 1024 * 1024;
+    private static final int MAXDATA_OLD = 1024 * 4;
 
     private static final int AUTH_TOKEN = 1;
     private static final int AUTH_SIGNATURE = 2;
@@ -146,6 +147,10 @@ public class Connection implements NettyConnection.ConnectionListener {
                 break;
 
             case CNCX:
+                if (msg.arg1() == MAXDATA_OLD) {
+                    throw new ProtocolException("Unsupported ADB Protocol Version.");
+                }
+
                 onConnected();
                 break;
 
