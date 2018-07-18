@@ -15,8 +15,6 @@
  */
 package org.arpnetwork.adb;
 
-import android.util.Log;
-
 import java.io.IOException;
 import java.net.ProtocolException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -139,7 +137,6 @@ public class Connection implements NettyConnection.ConnectionListener {
 
     @Override
     public void onMessage(NettyConnection conn, Message msg) throws Exception {
-        Log.i("TEST", "message reached. cmd = " + msg);
         switch (msg.command()) {
             case AUTH:
                 assertProtocol(msg.arg0() == AUTH_TOKEN);
@@ -170,8 +167,6 @@ public class Connection implements NettyConnection.ConnectionListener {
 
     @Override
     public void onException(NettyConnection conn, Throwable cause) {
-        cause.printStackTrace();
-
         reset();
 
         if (mListener != null) {
