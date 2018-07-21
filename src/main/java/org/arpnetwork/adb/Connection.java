@@ -73,23 +73,23 @@ public class Connection implements NettyConnection.ConnectionListener {
         mChannels = new ConcurrentHashMap<>();
     }
 
-    public void setListener(ConnectionListener listener) {
+    public synchronized void setListener(ConnectionListener listener) {
         mListener = listener;
     }
 
-    public void connect() {
+    public synchronized void connect() {
         assertState(State.IDLE);
 
         mState = State.CONNECTING;
         mConn.connect();
     }
 
-    public void close() {
+    public synchronized void close() {
         mConn.close();
         reset();
     }
 
-    public ShellChannel openShell(String cmd) {
+    public synchronized ShellChannel openShell(String cmd) {
         int id = open("shell,v2,raw:" + cmd);
 
         ShellChannel ss = new ShellChannel(this, id);
@@ -97,7 +97,7 @@ public class Connection implements NettyConnection.ConnectionListener {
         return ss;
     }
 
-    public SyncChannel openSync() {
+    public synchronized SyncChannel openSync() {
         int id = open("sync:");
 
         SyncChannel ss = new SyncChannel(this, id);
@@ -105,11 +105,11 @@ public class Connection implements NettyConnection.ConnectionListener {
         return ss;
     }
 
-    public void write(int id, int remoteId, ByteBuf buf) {
+    public synchronized void write(int id, int remoteId, ByteBuf buf) {
         write(id, remoteId, buf.array());
     }
 
-    public void write(int id, int remoteId, byte[] data) {
+    public synchronized void write(int id, int remoteId, byte[] data) {
         if (mState != State.CONNECTED) {
             throw new IllegalStateException();
         }
@@ -117,7 +117,7 @@ public class Connection implements NettyConnection.ConnectionListener {
         mConn.write(new Message(WRTE, id, remoteId, data));
     }
 
-    public void close(int id, int remoteId) {
+    public synchronized void close(int id, int remoteId) {
         mConn.write(new Message(CLSE, id, remoteId));
     }
 
@@ -127,7 +127,7 @@ public class Connection implements NettyConnection.ConnectionListener {
     }
 
     @Override
-    public void onClosed(NettyConnection conn) {
+    public synchronized void onClosed(NettyConnection conn) {
         reset();
 
         if (mListener != null) {
@@ -136,7 +136,7 @@ public class Connection implements NettyConnection.ConnectionListener {
     }
 
     @Override
-    public void onMessage(NettyConnection conn, Message msg) throws Exception {
+    public synchronized void onMessage(NettyConnection conn, Message msg) throws Exception {
         switch (msg.command()) {
             case AUTH:
                 assertProtocol(msg.arg0() == AUTH_TOKEN);
@@ -166,14 +166,13 @@ public class Connection implements NettyConnection.ConnectionListener {
     }
 
     @Override
-    public void onException(NettyConnection conn, Throwable cause) {
+    public synchronized void onException(NettyConnection conn, Throwable cause) {
         reset();
 
         if (mListener != null) {
             mListener.onException(this, cause);
         }
     }
-
 
     private void onAuth(byte[] token) throws IOException {
         switch (mState) {
