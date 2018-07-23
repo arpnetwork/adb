@@ -162,6 +162,10 @@ public class Connection implements NettyConnection.ConnectionListener {
             case CLSE:
                 onChannelClosed(msg.arg1(), msg.arg0());
                 break;
+
+            default:
+                assertProtocol(false);
+                break;
         }
     }
 
