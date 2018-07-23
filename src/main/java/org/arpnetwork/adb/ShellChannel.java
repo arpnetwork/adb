@@ -23,9 +23,9 @@ import io.netty.buffer.ByteBuf;
 public class ShellChannel extends Channel {
 
     public interface ShellListener {
-        void onStdout(ShellChannel ch, String data);
+        void onStdout(ShellChannel ch, byte[] data);
 
-        void onStderr(ShellChannel ch, String data);
+        void onStderr(ShellChannel ch, byte[] data);
 
         void onExit(ShellChannel ch, int code);
     }

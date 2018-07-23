@@ -10,13 +10,13 @@ public class ShellMessage {
     public static final int EXIT = 3;
 
     private int mId;
-    private String mData;
-
-    public ShellMessage(int id, byte[] data) {
-        this(id, new String(data));
-    }
+    private byte[] mData;
 
     public ShellMessage(int id, String data) {
+        this(id, data.getBytes());
+    }
+
+    public ShellMessage(int id, byte[] data) {
         mId = id;
         mData = data;
     }
@@ -41,10 +41,10 @@ public class ShellMessage {
     }
 
     public byte[] encodeToBytes() {
-        ByteBuf buf = Unpooled.buffer(5 + mData.length());
+        ByteBuf buf = Unpooled.buffer(5 + mData.length);
         buf.writeByte(mId);
-        buf.writeIntLE(mData.length());
-        buf.writeBytes(mData.getBytes());
+        buf.writeIntLE(mData.length);
+        buf.writeBytes(mData);
         return buf.array();
     }
 
@@ -52,7 +52,7 @@ public class ShellMessage {
         return mId;
     }
 
-    public String data() {
+    public byte[] data() {
         return mData;
     }
 
@@ -61,7 +61,7 @@ public class ShellMessage {
             throw new IllegalStateException();
         }
 
-        return mData.charAt(0);
+        return mData[0];
     }
 
     @Override
@@ -89,7 +89,7 @@ public class ShellMessage {
         }
 
         if (mId != EXIT) {
-            return String.format("[%s, \"%s\"]", id, mData.replaceAll("\n", "\\\\n"));
+            return String.format("[%s, \"%s\"]", id, new String(mData).replaceAll("\n", "\\\\n"));
         } else {
             return String.format("[%s, %d]", id, code());
         }
