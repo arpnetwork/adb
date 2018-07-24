@@ -82,7 +82,8 @@ public class Connection implements NettyConnection.ConnectionListener {
     public synchronized void connect() {
         assertState(State.IDLE);
 
-        mConn = new NettyConnection(this, mHost, mPort);
+        mConn = new NettyConnection(mHost, mPort);
+        mConn.setListener(this);
         mState = State.CONNECTING;
         mConn.connect();
     }
@@ -96,6 +97,7 @@ public class Connection implements NettyConnection.ConnectionListener {
     }
 
     public synchronized void close() {
+        mConn.setListener(null);
         mConn.close();
         mConn = null;
         reset();

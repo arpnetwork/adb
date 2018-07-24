@@ -35,6 +35,8 @@ import io.netty.handler.codec.ReplayingDecoder;
 import io.netty.util.concurrent.GenericFutureListener;
 
 public class NettyConnection {
+    private static final String ENCODER_NAME = "encoder";
+    private static final String DECODER_NAME = "decoder";
     private static final int CONNECT_TIMEOUT = 1000;
 
     private ConnectionListener mListener;
@@ -55,10 +57,13 @@ public class NettyConnection {
         void onException(NettyConnection conn, Throwable cause);
     }
 
-    public NettyConnection(ConnectionListener listener, String host, int port) {
-        mListener = listener;
+    public NettyConnection(String host, int port) {
         mHost = host;
         mPort = port;
+    }
+
+    public void setListener(ConnectionListener listener) {
+        mListener = listener;
     }
 
     public void connect() {
@@ -70,12 +75,11 @@ public class NettyConnection {
         b.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, CONNECT_TIMEOUT);
         b.option(ChannelOption.SO_KEEPALIVE, true);
         b.handler(new ChannelInitializer<SocketChannel>() {
-
             @Override
             public void initChannel(SocketChannel ch) {
                 ch.pipeline()
-                        .addLast("decoder", new MessageDecoder())
-                        .addLast("encoder", new MessageEncoder())
+                        .addLast(DECODER_NAME, new MessageDecoder())
+                        .addLast(ENCODER_NAME, new MessageEncoder())
                         .addLast(new ConnectionHandler(NettyConnection.this));
             }
         });
@@ -85,7 +89,7 @@ public class NettyConnection {
             @Override
             public void operationComplete(ChannelFuture future) {
                 if (future.cause() != null) {
-                    mListener.onException(NettyConnection.this, future.cause());
+                    onException(future.cause());
                 }
             }
         };
@@ -93,7 +97,12 @@ public class NettyConnection {
     }
 
     public void close() {
-        close(true);
+        mChannelFuture.removeListener(mChannelFutureListener);
+        try {
+            mChannelFuture.sync().channel().close().sync();
+        } catch (InterruptedException e) {
+        }
+        mWorkerGroup.shutdownGracefully();
     }
 
     public void write(Message msg) {
@@ -126,19 +135,7 @@ public class NettyConnection {
         if (mListener != null) {
             mListener.onException(this, cause);
         }
-        close(false);
-    }
-
-    private void close(boolean force) {
-        if (force) {
-            mListener = null;
-        }
-        mChannelFuture.removeListener(mChannelFutureListener);
-        try {
-            mChannelFuture.sync().channel().close().sync();
-        } catch (InterruptedException e) {
-        }
-        mWorkerGroup.shutdownGracefully();
+        close();
     }
 
     private static class ConnectionHandler extends ChannelInboundHandlerAdapter {
