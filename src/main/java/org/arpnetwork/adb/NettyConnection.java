@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.arpnetwork.adb;
 
 import java.lang.ref.WeakReference;
@@ -92,12 +93,7 @@ public class NettyConnection {
     }
 
     public void close() {
-        mChannelFuture.removeListener(mChannelFutureListener);
-        try {
-            mChannelFuture.sync().channel().close().sync();
-        } catch (InterruptedException e) {
-        }
-        mWorkerGroup.shutdownGracefully();
+        close(true);
     }
 
     public void write(Message msg) {
@@ -108,8 +104,44 @@ public class NettyConnection {
         mChannelFuture.channel().writeAndFlush(msg);
     }
 
-    private static class ConnectionHandler extends ChannelInboundHandlerAdapter {
+    private void onConnected() {
+        if (mListener != null) {
+            mListener.onConnected(this);
+        }
+    }
 
+    private void onClosed() {
+        if (mListener != null) {
+            mListener.onClosed(this);
+        }
+    }
+
+    private void onMessage(Message msg) throws Exception {
+        if (mListener != null) {
+            mListener.onMessage(this, msg);
+        }
+    }
+
+    private void onException(Throwable cause) {
+        if (mListener != null) {
+            mListener.onException(this, cause);
+        }
+        close(false);
+    }
+
+    private void close(boolean force) {
+        if (force) {
+            mListener = null;
+        }
+        mChannelFuture.removeListener(mChannelFutureListener);
+        try {
+            mChannelFuture.sync().channel().close().sync();
+        } catch (InterruptedException e) {
+        }
+        mWorkerGroup.shutdownGracefully();
+    }
+
+    private static class ConnectionHandler extends ChannelInboundHandlerAdapter {
         private WeakReference<NettyConnection> mConn;
 
         public ConnectionHandler(NettyConnection conn) {
@@ -120,7 +152,7 @@ public class NettyConnection {
         public void channelActive(ChannelHandlerContext ctx) throws Exception {
             NettyConnection conn = mConn.get();
             if (conn != null) {
-                conn.mListener.onConnected(conn);
+                conn.onConnected();
             }
 
             super.channelActive(ctx);
@@ -130,7 +162,7 @@ public class NettyConnection {
         public void channelInactive(ChannelHandlerContext ctx) throws Exception {
             NettyConnection conn = mConn.get();
             if (conn != null) {
-                conn.mListener.onClosed(conn);
+                conn.onClosed();
             }
 
             super.channelInactive(ctx);
@@ -140,7 +172,7 @@ public class NettyConnection {
         public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             NettyConnection conn = mConn.get();
             if (conn != null) {
-                conn.mListener.onMessage(conn, (Message) msg);
+                conn.onMessage((Message) msg);
             }
         }
 
@@ -148,14 +180,12 @@ public class NettyConnection {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             NettyConnection conn = mConn.get();
             if (conn != null) {
-                conn.mListener.onException(conn, cause);
-                conn.close();
+                conn.onException(cause);
             }
         }
     }
 
     private static class MessageDecoder extends ReplayingDecoder<Void> {
-
         @Override
         protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
             out.add(Message.readFrom(in));
@@ -163,7 +193,6 @@ public class NettyConnection {
     }
 
     private static class MessageEncoder extends MessageToByteEncoder<Message> {
-
         @Override
         protected void encode(ChannelHandlerContext ctx, Message msg, ByteBuf out) {
             msg.writeTo(out);

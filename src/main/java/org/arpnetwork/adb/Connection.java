@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.arpnetwork.adb;
 
 import java.io.IOException;
@@ -37,14 +38,14 @@ public class Connection implements NettyConnection.ConnectionListener {
     private static final int AUTH_SIGNATURE = 2;
     private static final int AUTH_RSAPUBLICKEY = 3;
 
-    private NettyConnection mConn;
     private Auth mAuth;
+    private String mHost;
+    private int mPort;
+
+    private NettyConnection mConn;
     private State mState;
-
     private ConcurrentHashMap<Integer, Channel> mChannels;
-
     private int mSeq;
-
     private ConnectionListener mListener;
 
     public interface ConnectionListener {
@@ -66,11 +67,12 @@ public class Connection implements NettyConnection.ConnectionListener {
     }
 
     public Connection(Auth auth, String host, int port) {
-        mConn = new NettyConnection(this, host, port);
         mAuth = auth;
-        mSeq = 1;
+        mHost = host;
+        mPort = port;
         mState = State.IDLE;
         mChannels = new ConcurrentHashMap<>();
+        mSeq = 1;
     }
 
     public synchronized void setListener(ConnectionListener listener) {
@@ -80,12 +82,22 @@ public class Connection implements NettyConnection.ConnectionListener {
     public synchronized void connect() {
         assertState(State.IDLE);
 
+        mConn = new NettyConnection(this, mHost, mPort);
         mState = State.CONNECTING;
         mConn.connect();
     }
 
+    public synchronized void auth() {
+        assertState(State.AUTH_SIGNATURE);
+
+        mState = State.AUTH_RSAPUBLICKEY;
+        byte[] key = (mAuth.getPublicKey() + " ARP\0").getBytes();
+        mConn.write(new Message(AUTH, AUTH_RSAPUBLICKEY, 0, key));
+    }
+
     public synchronized void close() {
         mConn.close();
+        mConn = null;
         reset();
     }
 
@@ -186,9 +198,6 @@ public class Connection implements NettyConnection.ConnectionListener {
                 break;
 
             case AUTH_SIGNATURE:
-                mState = State.AUTH_RSAPUBLICKEY;
-                byte[] key = (mAuth.getPublicKey() + " ARP\0").getBytes();
-                mConn.write(new Message(AUTH, AUTH_RSAPUBLICKEY, 0, key));
                 if (mListener != null) {
                     mListener.onAuth(this, mAuth.getPublicKeyDigest());
                 }
