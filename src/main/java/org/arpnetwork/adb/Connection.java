@@ -106,17 +106,25 @@ public class Connection implements NettyConnection.ConnectionListener {
     public synchronized ShellChannel openShell(String cmd) {
         int id = open("shell,v2,raw:" + cmd);
 
-        ShellChannel ss = new ShellChannel(this, id);
-        mChannels.put(id, ss);
-        return ss;
+        ShellChannel ch = new ShellChannel(this, id);
+        mChannels.put(id, ch);
+        return ch;
+    }
+
+    public synchronized RawChannel openExec(String cmd) {
+        int id = open("exec:" + cmd);
+
+        RawChannel ch = new RawChannel(this, id);
+        mChannels.put(id, ch);
+        return ch;
     }
 
     public synchronized SyncChannel openSync() {
         int id = open("sync:");
 
-        SyncChannel ss = new SyncChannel(this, id);
-        mChannels.put(id, ss);
-        return ss;
+        SyncChannel ch = new SyncChannel(this, id);
+        mChannels.put(id, ch);
+        return ch;
     }
 
     public synchronized void write(int id, int remoteId, ByteBuf buf) {
