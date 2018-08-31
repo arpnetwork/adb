@@ -58,7 +58,7 @@ public class Connection implements NettyConnection.ConnectionListener {
         void onException(Connection conn, Throwable cause);
     }
 
-    private enum State {
+    public enum State {
         IDLE,
         CONNECTING,
         AUTH_SIGNATURE,
@@ -141,6 +141,10 @@ public class Connection implements NettyConnection.ConnectionListener {
 
     public synchronized void close(int id, int remoteId) {
         mConn.write(new Message(CLSE, id, remoteId));
+    }
+
+    public synchronized State getState() {
+        return mState;
     }
 
     @Override
