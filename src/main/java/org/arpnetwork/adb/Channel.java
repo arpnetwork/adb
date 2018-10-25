@@ -90,6 +90,8 @@ public abstract class Channel {
         while ((msg = decode(mBuf)) != null) {
             onRead(msg);
         }
+
+        mBuf.discardSomeReadBytes();
     }
 
     protected abstract Object decode(ByteBuf buf);
